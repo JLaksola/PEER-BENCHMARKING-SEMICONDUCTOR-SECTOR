@@ -35,11 +35,11 @@ tickers_3674 = [
     "SWKS",
     "NXPI",
     "CRUS",
-    "SIMO",
     "HIMX",
     "MXL",
     "SMTC",
     "SLAB",
+    "SIMO",
     "SYNA",
     "RMBS",
     "POWI",
@@ -112,6 +112,6 @@ print(seed["sic"].unique())
 
 # Save to CSV
 seed.to_csv(
-    "/Users/kayttaja/Desktop/PREDICTING EARNINGS/data/interim/semiconductor_companies.csv",
+    "/Users/kayttaja/Desktop/PEER BENCHMARKING SEMICONDUCTOR SECTOR/data/interim/semiconductor_companies.csv",
     index=False,
 )

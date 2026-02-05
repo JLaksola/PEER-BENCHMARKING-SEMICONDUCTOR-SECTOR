@@ -156,22 +156,26 @@ m = re.search(r"(?i).{0,30}\bfabless\b.{0,30}", text)
 print(m.group(0) if m else "Ei löytynyt 'fabless' sanaa tästä dokumentista.")
 
 
-cik_str = "0001835632"
+cik_str = "0001709048"
 
 facts_url = f"https://data.sec.gov/api/xbrl/companyfacts/CIK{cik_str}.json"
 facts = requests.get(facts_url, headers=headers).json()
 print(facts.keys())
-facts["facts"].keys()
-facts["facts"]["us-gaap"].keys()
-facts["facts"]["us-gaap"]["RevenueFromContractWithCustomerExcludingAssessedTax"]
-facts["facts"]["us-gaap"]["Revenues"]["units"]["USD"][0]
-fact_data = facts["facts"]["us-gaap"]["Revenues"]["units"]["USD"]
-print(fact_data)
+facts["entityName"]
+list(facts["facts"].keys())[0]
+facts["facts"]["ifrs-full"]
+facts["facts"]["ifrs-full"]["Revenue"]
+facts["facts"]["ifrs-full"]["Revenues"]
+facts["facts"]["ifrs-full"]["ResearchAndDevelopmentExpense"]
+fact_data = facts["facts"]["ifrs-full"]["Revenues"]["units"]["USD"]
+fact_data = pd.DataFrame(fact_data)
+fact_data = fact_data[fact_data["form"].isin(["10-K", "20-F/A"])].copy()
+print(fact_data["form"].unique())
 
 
 revenues = (
     facts.get("facts", {})
-    .get("us-gaap", {})
+    .get("ifrs-full", {})
     .get("Revenues", {})
     .get("units", {})
     .get("USD", [])
@@ -181,15 +185,15 @@ print(revenues)
 df = pd.DataFrame(revenues)
 print(df.head())
 print(len(df))
-df = df[df["form"].isin(["10-Q", "10-K"])].rename(columns={"val": "revenue"}).copy()
+df = df[df["form"].isin(["10-K", "20-F/A"])].rename(columns={"val": "revenue"}).copy()
 print(df.head())
 print(len(df))
 
 
-facts["facts"]["us-gaap"]["OperatingIncomeLoss"]["units"]["USD"][0]
+facts["facts"]["ifrs-full"]["OperatingIncomeLoss"]["units"]["USD"][0]
 operating_income = (
     facts.get("facts", {})
-    .get("us-gaap", {})
+    .get("ifrs-full", {})
     .get("OperatingIncomeLoss", {})
     .get("units", {})
     .get("USD", [])
@@ -197,7 +201,7 @@ operating_income = (
 
 df_operating_income = pd.DataFrame(operating_income)
 df_operating_income = (
-    df_operating_income[df_operating_income["form"].isin(["10-Q", "10-K"])]
+    df_operating_income[df_operating_income["form"].isin(["10-K", "20-F/A"])]
     .rename(columns={"val": "operating_income"})
     .copy()
 )
