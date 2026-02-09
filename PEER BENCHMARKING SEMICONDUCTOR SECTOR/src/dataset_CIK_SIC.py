@@ -76,10 +76,94 @@ tickers_3674 = [
     "GFS",
     "WOLF",
     "INDI",
+    "QCOM",
+    "INTC",
+    "TXN",
+    "ADI",
+    "MU",
+    "MCHP",
+    "STM",
+    "TSM",
+    "UMC",
+    "ASX",
+    "ARM",
+    "VSH",
+    "NVEC",
+    "OLED",
+    "LITE",
+    "COHR",
+    "NVTS",
+    "ALAB",
+    "CEVA",
+    "WDC",
+    "FSLY",
+    "ENTG",
+    "ONTO",
+    "ACLS",
+    "CAMT",
+    "AEHR",
+    "MKSI",
+    "TER",
+    "KLAC",
+    "LRCX",
+    "MX",
+    "PRTH",
+    "CSIQ",
+    "SNDL",
+    "SGH",
+    "VSAT",
+    "DGII",
+    "PLTR",
+    "CRSR",
+    "IRDM",
+    "BAND",
+    "AEYE",
+    "POWW",
+    "SNPS",
+    "CDNS",
+    "ANSS",
+    "ASML",
+    "AMAT",
+    "COHU",
+    "AEIS",
+    "VECO",
+    "NVMI",
+    "TSEM",
+    "ASYS",
+    "INTT",
+    "IPGP",
+    "LFUS",
+    "TEL",
+    "FLEX",
+    "JBL",
+    "SANM",
+    "BELFB",
+    "VICR",
+    "AVT",
+    "ARW",
+    "CTS",
+    "PLXS",
+    "TTMI",
+    "FN",
+    "MSI",
+    "LGL",
+    "RBBN",
+    "CIEN",
+    "VIAV",
+    "INFN",
+    "AAOI",
+    "OESX",
+    "DGHI",
+    "CEAD",
+    "ALNT",
+    "MTSL",
+    "ITRI",
+    "NPTN",
 ]
 
 seed = (companyData[companyData["ticker"].isin(tickers_3674)]).copy()
 print(len(seed))
+print(seed["cik_str"].nunique())
 
 
 seed["sic"] = ""
@@ -109,6 +193,11 @@ for index, row in seed.iterrows():
 
 print(seed.head())
 print(seed["sic"].unique())
+
+# Drop all non SIC=3674
+seed = seed[seed["sic"] == "3674"]
+
+len(seed)
 
 # Save to CSV
 seed.to_csv(

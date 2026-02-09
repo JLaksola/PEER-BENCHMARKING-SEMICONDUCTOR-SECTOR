@@ -156,18 +156,18 @@ m = re.search(r"(?i).{0,30}\bfabless\b.{0,30}", text)
 print(m.group(0) if m else "Ei löytynyt 'fabless' sanaa tästä dokumentista.")
 
 
-cik_str = "0001709048"
+cik_str = "0001045810"
 
 facts_url = f"https://data.sec.gov/api/xbrl/companyfacts/CIK{cik_str}.json"
 facts = requests.get(facts_url, headers=headers).json()
 print(facts.keys())
 facts["entityName"]
-list(facts["facts"].keys())[0]
-facts["facts"]["ifrs-full"]
-facts["facts"]["ifrs-full"]["Revenue"]
-facts["facts"]["ifrs-full"]["Revenues"]
-facts["facts"]["ifrs-full"]["ResearchAndDevelopmentExpense"]
-fact_data = facts["facts"]["ifrs-full"]["Revenues"]["units"]["USD"]
+list(facts["facts"].keys())
+facts["facts"]["us-gaap"].keys()
+facts["facts"]["us-gaap"]["CapitalExpenditures"]
+facts["facts"]["us-gaap"]["RevenueFromContractWithCustomerExcludingAssessedTax"]
+facts["facts"]["us-gaap"]["ResearchAndDevelopmentExpense"]
+fact_data = facts["facts"]["us-gaap"]["Revenues"]["units"]["USD"]
 fact_data = pd.DataFrame(fact_data)
 fact_data = fact_data[fact_data["form"].isin(["10-K", "20-F/A"])].copy()
 print(fact_data["form"].unique())
@@ -212,4 +212,4 @@ print(df_operating_income.head())
 join_keys = ["end", "form", "frame", "accn"]
 df_right = df_operating_income[join_keys + ["operating_income"]]
 df_merged = pd.merge(df, df_right, on=join_keys, how="left")
-print(df_merged.head())
+

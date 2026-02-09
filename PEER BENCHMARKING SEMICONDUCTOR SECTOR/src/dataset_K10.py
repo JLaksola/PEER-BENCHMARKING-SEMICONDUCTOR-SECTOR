@@ -13,30 +13,40 @@ df_CIK = pd.read_csv(
 
 # Function to extract fact data
 def extract_fact(facts_json, fact_name):
-    # Try both US GAAP and IFRS tags
+    # Try both US GAAP and IFRS tags and both USD and EUR units
     standard_tags = ["us-gaap", "ifrs-full"]
-    # Extract fact data
+    units_tags = ["USD", "EUR"]
+    
+    fact_data = None
+    found = False
+    
+    # Extract the fact data
     for standard_tag in standard_tags:
-        try:
-            fact_data = facts_json["facts"][standard_tag][fact_name]["units"]["USD"]
-            break
-        except KeyError:
-            continue
-    else:
-        return pd.DataFrame(
-            columns=["accn", "end", "fp", "form", "filed", fact_name.lower()]
-        )
+        for unit in units_tags:
+            try:
+                fact_data = facts_json["facts"][standard_tag][fact_name]["units"][unit]
+                found = True
+                break  # break inner loop
+            except KeyError:
+                continue
+        if found:
+            break  # break outer loop too
+
+    if not found:
+        return pd.DataFrame(columns=["accn", "end", "fp", "form", "filed", fact_name.lower()])
+
     # Convert to DataFrame
     df_fact = pd.DataFrame(fact_data)
     # Filter for 10-K forms
-    df_fact = df_fact[df_fact["form"].isin(["10-K", "20-F/A", "20-F"])].copy()
+    df_fact = df_fact[df_fact["form"].isin(["10-K", "10-K/A", "20-F/A", "20-F"])].copy()
+    
     # Convert 'filed' to datetime and sort
     if "filed" in df_fact.columns:
         df_fact["filed"] = pd.to_datetime(df_fact["filed"], errors="coerce")
         df_fact = df_fact.sort_values("filed")
 
-    # Remove duplicates based on 'end', 'fp' and 'form'
-    df_fact = df_fact.drop_duplicates(subset=["end", "fp", "form"], keep="last")
+    # Remove duplicates based on 'end' and 'accn'
+    df_fact = df_fact.drop_duplicates(subset=["end", "accn"], keep="last")
 
     # Rename 'val' column to fact name in lowercase
     df_fact = df_fact.rename(columns={"val": fact_name.lower()})
@@ -63,6 +73,7 @@ def extract_fact_with_fallback(facts_json, tags, output_name):
     return df
 
 
+
 # List of facts to extract with fallback tags for each fact
 Fallback_tags = {
     "Revenues": [
@@ -76,48 +87,36 @@ Fallback_tags = {
         "ResearchAndDevelopmentExpenseExcludingAcquiredInProcessCost",
         "ResearchAndDevelopmentExpenseSoftwareExcludingAcquiredInProcessCost",
     ],
-    "Assets": ["Assets", "AssetsCurrent"],
-    "Liabilities": ["Liabilities", "LiabilitiesCurrent"],
-    "CashAndCashEquivalentsAtCarryingValue": [
-        "CashAndCashEquivalentsAtCarryingValue",
-        "CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents",
+    "Assets": ["Assets"],
+    "AssetsCurrent": ["AssetsCurrent", "CurrentAssets"],
+    "Goodwill": ["Goodwill"],
+    "IntangibleAssetsNetExcludingGoodwill": [
+    "IntangibleAssetsNetExcludingGoodwill",
+    "IntangibleAssetsNet",
+    "FiniteLivedIntangibleAssetsNet",
+    "IntangibleAssetsOtherThanGoodwill"
     ],
-    "InventoryNet": ["InventoryNet", "Inventories"],
-    "AccountsReceivableNetCurrent": [
-        "AccountsReceivableNetCurrent",
-        "AccountsReceivableNet",
-    ],
-    "AccountsPayableCurrent": [
-        "AccountsPayableCurrent",
-        "AccountsPayable",
-        "AccountsPayableTradeCurrent",
-        "AccountsPayableTrade",
-    ],
-    "PropertyPlantAndEquipmentNet": [
-        "PropertyPlantAndEquipmentNet",
-        "PropertyPlantAndEquipmentNetIncludingConstructionInProgress",
-    ],
-    "NetCashProvidedByUsedInOperatingActivities": [
-        "NetCashProvidedByUsedInOperatingActivities",
-        "NetCashProvidedByUsedInOperatingActivitiesContinuingOperations",
-        "NetCashProvidedByUsedInOperatingActivitiesDiscontinuedOperations",
-    ],
-    "SellingGeneralAndAdministrativeExpense": [
-        "SellingGeneralAndAdministrativeExpense"
-    ],
-    "SellingAndMarketingExpense": ["SellingAndMarketingExpense"],
-    "GeneralAndAdministrativeExpense": ["GeneralAndAdministrativeExpense"],
-    "GrossProfit": ["GrossProfit"],
-    "OperatingExpenses": ["OperatingExpenses"],
-    "CostOfRevenue": ["CostOfRevenue"],
-    "CostOfGoodsAndServicesSold": ["CostOfGoodsAndServicesSold"],
-    "PropertyPlantAndEquipmentGross": ["PropertyPlantAndEquipmentGross"],
-    "AccumulatedDepreciationDepletionAndAmortizationPropertyPlantAndEquipment": [
-        "AccumulatedDepreciationDepletionAndAmortizationPropertyPlantAndEquipment"
-    ],
+    "IntangibleAssetsNetIncludingGoodwill": ["IntangibleAssetsNetIncludingGoodwill"],
+    "AmortizationOfIntangibleAssets": ["AmortizationOfIntangibleAssets"],
+    "OperatingIncomeLoss": ["OperatingIncomeLoss"],
+    "CapitalExpenditures": [
+    "PaymentsToAcquirePropertyPlantAndEquipment",
+    "PaymentsToAcquireProductiveAssets",
+    "PaymentsToAcquirePropertyPlantAndEquipmentAndOtherProperty",
+    "PaymentsToAcquirePropertyPlantAndEquipmentToBeUsedInOperations",
+    "CapitalExpenditures",
+    "CapitalExpenditure",
+    "CapitalSpending",
+    "PaymentsToAcquireFixedAssets",
+    "PaymentsToAcquireEquipmentOnLease",
+    "PaymentsToAcquireMachineryAndEquipment",
+    "PropertyPlantAndEquipmentAdditions",
+    "PaymentsToAcquirePropertyPlantAndEquipmentGross",
+    "AdditionsToPropertyPlantAndEquipment",
+]
 }
 
-all_parts = []
+frames = []
 
 # Loop through each company CIK
 for _, row in df_CIK.iterrows():
@@ -143,7 +142,7 @@ for _, row in df_CIK.iterrows():
         )
 
     # Merge all fact DataFrames on join keys
-    join_keys = ["accn"]
+    join_keys = ["end"]
     df_merged = extract_fact_with_fallback(
         facts_json, Fallback_tags["Revenues"], "revenue"
     )
@@ -169,16 +168,20 @@ for _, row in df_CIK.iterrows():
     df_merged["ticker"] = ticker
     df_merged["cik"] = cik
 
-    # Append to all parts list
-    all_parts.append(df_merged)
+    # Drop duplicates by "accn" and "end"
+    df_merged = df_merged.drop_duplicates(subset=["accn", "end"])
+    
+    # Append to list of DataFrames
+    frames.append(df_merged)
 
     # Print progress and sleep to avoid rate limiting
     print(f"Processed {company_name}")
     time.sleep(0.2)
 
+# Concatenate the dataframes
+df = pd.concat(frames, ignore_index=True)
 
-# Concatenate all company DataFrames
-df = pd.concat(all_parts, ignore_index=True)
+df = pd.read_csv("/Users/kayttaja/Desktop/PEER BENCHMARKING SEMICONDUCTOR SECTOR/data/interim/semiconductor_companies_10K.csv")
 
 # Convert 'end' and 'start' to datetime and calculate duration in days
 df["start"] = pd.to_datetime(df["start"], errors="coerce")
@@ -190,6 +193,19 @@ df = df[df["days"].between(330, 400)]
 # Check for missing values and print the number of rows
 print(df.isna().sum())
 print(len(df))
+
+# Drop all rows with missing goodwill values, assets, liabilities
+df = df.dropna(subset=["goodwill", "operatingincomeloss", "assets", "intangibleassetsnetexcludinggoodwill", "capitalexpenditures"])
+
+# Drop all duplicate frames by CIK
+df = df.drop_duplicates(subset=["cik", "end"])
+
+# Subtract goodwill from intangibleassetsnetincludinggoodwill, where intangibleassetsnetexcludinggoodwill is NA
+mask = df["intangibleassetsnetexcludinggoodwill"].isna()
+df.loc[mask, "intangibleassetsnetexcludinggoodwill"] = (
+    df.loc[mask, "intangibleassetsnetincludinggoodwill"] - df.loc[mask, "goodwill"]
+)
+
 
 # Count rows where revenue is zero
 revenue_zero_count = 0
