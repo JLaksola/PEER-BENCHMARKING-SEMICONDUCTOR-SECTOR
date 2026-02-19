@@ -15,7 +15,7 @@ df_CIK = pd.read_csv(
 def extract_fact(facts_json, fact_name):
     # Try both US GAAP and IFRS tags and both USD and EUR units
     standard_tags = ["us-gaap", "ifrs-full"]
-    units_tags = ["USD", "EUR"]
+    units_tags = ["USD"]
     
     fact_data = None
     found = False
