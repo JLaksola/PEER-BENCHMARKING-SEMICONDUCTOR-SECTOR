@@ -2,9 +2,10 @@ import time
 import requests
 import pandas as pd
 
-# Set user agent
+# Set user agent (set your SEC EDGAR user-agent)
 headers = {"User-Agent": "laksolajoni@gmail.com"}
 
+# Load the companies dataset (set your own file path)
 df_CIK = pd.read_csv(
     "/Users/kayttaja/Desktop/PEER BENCHMARKING SEMICONDUCTOR SECTOR/data/interim/semiconductor_companies.csv",
     dtype={"cik_str": str},
@@ -182,10 +183,6 @@ for _, row in df_CIK.iterrows():
 # Concatenate the dataframes
 df = pd.concat(frames, ignore_index=True)
 
-df = pd.read_csv(
-    "/Users/kayttaja/Desktop/PEER BENCHMARKING SEMICONDUCTOR SECTOR/data/interim/semiconductor_companies_10K.csv"
-)
-
 # Convert 'end' and 'start' to datetime and calculate duration in days
 df["start"] = pd.to_datetime(df["start"], errors="coerce")
 df["end"] = pd.to_datetime(df["end"], errors="coerce")
@@ -226,7 +223,7 @@ for _, row in df.iterrows():
 print(f"Number of rows with zero revenue: {revenue_zero_count}")
 
 
-# Save to CSV
+# Save to CSV (set your desired file path)
 df.to_csv(
     "/Users/kayttaja/Desktop/PEER BENCHMARKING SEMICONDUCTOR SECTOR/data/interim/semiconductor_companies_10K.csv",
     index=False,
