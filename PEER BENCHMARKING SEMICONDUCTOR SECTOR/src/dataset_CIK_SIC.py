@@ -2,7 +2,7 @@ import pandas as pd
 import requests
 import time
 
-# Set user agent
+# Set user agent (set your SEC EDGAR user-agent)
 headers = {"User-Agent": "laksolajoni@gmail.com"}
 
 # Get company tickers
@@ -199,7 +199,7 @@ seed = seed[seed["sic"] == "3674"]
 
 len(seed)
 
-# Save to CSV
+# Save to CSV (set your desired file path)
 seed.to_csv(
     "/Users/kayttaja/Desktop/PEER BENCHMARKING SEMICONDUCTOR SECTOR/data/interim/semiconductor_companies.csv",
     index=False,
