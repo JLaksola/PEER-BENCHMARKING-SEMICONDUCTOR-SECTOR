@@ -15,11 +15,11 @@ df_CIK = pd.read_csv(
 def extract_fact(facts_json, fact_name):
     # Try both US GAAP and IFRS tags and both USD and EUR units
     standard_tags = ["us-gaap", "ifrs-full"]
-    units_tags = ["USD"]
-    
+    units_tags = ["USD", "EUR"]
+
     fact_data = None
     found = False
-    
+
     # Extract the fact data
     for standard_tag in standard_tags:
         for unit in units_tags:
@@ -33,13 +33,15 @@ def extract_fact(facts_json, fact_name):
             break  # break outer loop too
 
     if not found:
-        return pd.DataFrame(columns=["accn", "end", "fp", "form", "filed", fact_name.lower()])
+        return pd.DataFrame(
+            columns=["accn", "end", "fp", "form", "filed", fact_name.lower()]
+        )
 
     # Convert to DataFrame
     df_fact = pd.DataFrame(fact_data)
     # Filter for 10-K forms
     df_fact = df_fact[df_fact["form"].isin(["10-K", "10-K/A", "20-F/A", "20-F"])].copy()
-    
+
     # Convert 'filed' to datetime and sort
     if "filed" in df_fact.columns:
         df_fact["filed"] = pd.to_datetime(df_fact["filed"], errors="coerce")
@@ -73,7 +75,6 @@ def extract_fact_with_fallback(facts_json, tags, output_name):
     return df
 
 
-
 # List of facts to extract with fallback tags for each fact
 Fallback_tags = {
     "Revenues": [
@@ -91,29 +92,29 @@ Fallback_tags = {
     "AssetsCurrent": ["AssetsCurrent", "CurrentAssets"],
     "Goodwill": ["Goodwill"],
     "IntangibleAssetsNetExcludingGoodwill": [
-    "IntangibleAssetsNetExcludingGoodwill",
-    "IntangibleAssetsNet",
-    "FiniteLivedIntangibleAssetsNet",
-    "IntangibleAssetsOtherThanGoodwill"
+        "IntangibleAssetsNetExcludingGoodwill",
+        "IntangibleAssetsNet",
+        "FiniteLivedIntangibleAssetsNet",
+        "IntangibleAssetsOtherThanGoodwill",
     ],
     "IntangibleAssetsNetIncludingGoodwill": ["IntangibleAssetsNetIncludingGoodwill"],
     "AmortizationOfIntangibleAssets": ["AmortizationOfIntangibleAssets"],
     "OperatingIncomeLoss": ["OperatingIncomeLoss"],
     "CapitalExpenditures": [
-    "PaymentsToAcquirePropertyPlantAndEquipment",
-    "PaymentsToAcquireProductiveAssets",
-    "PaymentsToAcquirePropertyPlantAndEquipmentAndOtherProperty",
-    "PaymentsToAcquirePropertyPlantAndEquipmentToBeUsedInOperations",
-    "CapitalExpenditures",
-    "CapitalExpenditure",
-    "CapitalSpending",
-    "PaymentsToAcquireFixedAssets",
-    "PaymentsToAcquireEquipmentOnLease",
-    "PaymentsToAcquireMachineryAndEquipment",
-    "PropertyPlantAndEquipmentAdditions",
-    "PaymentsToAcquirePropertyPlantAndEquipmentGross",
-    "AdditionsToPropertyPlantAndEquipment",
-]
+        "PaymentsToAcquirePropertyPlantAndEquipment",
+        "PaymentsToAcquireProductiveAssets",
+        "PaymentsToAcquirePropertyPlantAndEquipmentAndOtherProperty",
+        "PaymentsToAcquirePropertyPlantAndEquipmentToBeUsedInOperations",
+        "CapitalExpenditures",
+        "CapitalExpenditure",
+        "CapitalSpending",
+        "PaymentsToAcquireFixedAssets",
+        "PaymentsToAcquireEquipmentOnLease",
+        "PaymentsToAcquireMachineryAndEquipment",
+        "PropertyPlantAndEquipmentAdditions",
+        "PaymentsToAcquirePropertyPlantAndEquipmentGross",
+        "AdditionsToPropertyPlantAndEquipment",
+    ],
 }
 
 frames = []
@@ -170,7 +171,7 @@ for _, row in df_CIK.iterrows():
 
     # Drop duplicates by "accn" and "end"
     df_merged = df_merged.drop_duplicates(subset=["accn", "end"])
-    
+
     # Append to list of DataFrames
     frames.append(df_merged)
 
@@ -181,7 +182,9 @@ for _, row in df_CIK.iterrows():
 # Concatenate the dataframes
 df = pd.concat(frames, ignore_index=True)
 
-df = pd.read_csv("/Users/kayttaja/Desktop/PEER BENCHMARKING SEMICONDUCTOR SECTOR/data/interim/semiconductor_companies_10K.csv")
+df = pd.read_csv(
+    "/Users/kayttaja/Desktop/PEER BENCHMARKING SEMICONDUCTOR SECTOR/data/interim/semiconductor_companies_10K.csv"
+)
 
 # Convert 'end' and 'start' to datetime and calculate duration in days
 df["start"] = pd.to_datetime(df["start"], errors="coerce")
@@ -194,17 +197,25 @@ df = df[df["days"].between(330, 400)]
 print(df.isna().sum())
 print(len(df))
 
-# Drop all rows with missing goodwill values, assets, liabilities
-df = df.dropna(subset=["goodwill", "operatingincomeloss", "assets", "intangibleassetsnetexcludinggoodwill", "capitalexpenditures"])
-
-# Drop all duplicate frames by CIK
-df = df.drop_duplicates(subset=["cik", "end"])
-
 # Subtract goodwill from intangibleassetsnetincludinggoodwill, where intangibleassetsnetexcludinggoodwill is NA
 mask = df["intangibleassetsnetexcludinggoodwill"].isna()
 df.loc[mask, "intangibleassetsnetexcludinggoodwill"] = (
     df.loc[mask, "intangibleassetsnetincludinggoodwill"] - df.loc[mask, "goodwill"]
 )
+
+# Drop all rows with missing goodwill values, assets, liabilities
+df = df.dropna(
+    subset=[
+        "goodwill",
+        "operatingincomeloss",
+        "assets",
+        "intangibleassetsnetexcludinggoodwill",
+        "capitalexpenditures",
+    ]
+)
+
+# Drop all duplicate frames by CIK
+df = df.drop_duplicates(subset=["cik", "end"])
 
 
 # Count rows where revenue is zero

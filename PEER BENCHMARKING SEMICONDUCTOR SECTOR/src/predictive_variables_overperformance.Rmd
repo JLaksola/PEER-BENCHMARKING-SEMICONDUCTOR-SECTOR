@@ -1,0 +1,292 @@
+---
+title: "Predictive Variables for Next-Year Overperformance in the Semiconductor Industry"
+author: "Group 5"
+date: "`r format(Sys.Date(), '%Y-%m-%d')`"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    number_sections: true
+---
+
+```{r setup, message=FALSE, warning=FALSE}
+# Reproducible setup
+library(tidyverse)
+library(here)
+library(scales)
+library(corrplot)
+
+library(rsample)   # time-aware resampling
+library(glmnet)    # LASSO logistic regression
+library(PRROC)     # PR-AUC and precision–recall curve
+library(broom)     # tidy model summaries
+
+set.seed(123)
+```
+
+# 1. Study objective and analytical approach
+
+This analysis identifies financial-statement-based variables that are **predictive of next-year overperformance**, where overperformance is defined as membership in the top quintile of winsorized EBIT margin within a given fiscal year. The primary outcome is the binary indicator `target_next_year`, interpreted as next-year overperformance status.
+
+To support variable identification under temporal dependence, the approach combines:
+
+1. A **time-ordered training/test split** (holdout evaluation on future years),
+2. **Rolling-origin (expanding-window) validation** within the training period, and
+3. **LASSO-regularized logistic regression** to select predictive variables with reduced overfitting risk.
+
+Variable relevance is summarized by **selection stability** across rolling folds and by **odds ratios** from a refitted logistic regression on the selected variable subset.
+
+# 2. Visualization settings
+
+```{r theme, message=FALSE, warning=FALSE}
+# Minimalist theme for figures
+biz_dark   <- "#3f581f"
+gray_dark  <- "#505050"
+gray_light <- "#e0e0e0"
+text_black <- "#151515"
+
+theme_consulting <- function() {
+  theme_minimal(base_size = 11, base_family = "sans") +
+    theme(
+      plot.title = element_text(color = text_black, size = 14, face = "bold", margin = margin(b = 6)),
+      plot.subtitle = element_text(color = gray_dark, size = 11, margin = margin(b = 15)),
+      plot.caption = element_text(color = gray_dark, size = 8, hjust = 0, margin = margin(t = 15)),
+      axis.title = element_text(size = 10, face = "bold", color = gray_dark),
+      axis.text = element_text(size = 9, color = gray_dark),
+      panel.grid.major.y = element_line(color = gray_light, linewidth = 0.5),
+      panel.grid.major.x = element_blank(),
+      panel.grid.minor = element_blank(),
+      legend.position = "none"
+    )
+}
+
+corr_palette <- colorRampPalette(c(gray_dark, "white", biz_dark))(200)
+```
+
+# 3. Data loading and time-based split
+
+```{r load-split, message=FALSE, warning=FALSE}
+
+df <- readr::read_csv("/Users/niilosaarela/Downloads/semiconductor_companies_10k_cleaned_predictive.csv")
+
+cut_year <- 2021
+train <- df %>% filter(year <= cut_year)
+test  <- df %>% filter(year >  cut_year)
+
+cat("Train rows:", nrow(train), "\n")
+cat("Test rows:",  nrow(test),  "\n")
+cat("Train positive rate (target_next_year=1): ",
+    round(mean(train$target_next_year == 1, na.rm=TRUE), 3), "\n")
+```
+
+# 4. Training-only descriptive visualization
+
+```{r eda-train-only, message=FALSE, warning=FALSE}
+# Cross-sectional distribution for the last training year
+eda_year <- max(train$year, na.rm = TRUE)
+df_plot1 <- train %>% filter(year == eda_year)
+
+threshold_val <- unique(df_plot1$threshold_80th)
+stopifnot(length(threshold_val) == 1)
+threshold_val <- threshold_val[[1]]
+
+ggplot(df_plot1, aes(x = ebit_margin_w, fill = ebit_margin_w >= threshold_val)) +
+  geom_histogram(color = "white", bins = 30, alpha = 0.85) +
+  scale_fill_manual(values = c("FALSE" = gray_light, "TRUE" = biz_dark)) +
+  geom_vline(xintercept = threshold_val, color = gray_dark, linetype = "dashed", linewidth = 0.8) +
+  labs(
+    title = "Overperformance Threshold as the Top Quintile of EBIT Margin",
+    subtitle = paste0("Training-period distribution for ", eda_year),
+    x = "Winsorized EBIT margin",
+    y = "Number of firm-year observations"
+  ) +
+  scale_x_continuous(labels = percent_format(accuracy = 1)) +
+  theme_consulting()
+```
+
+# 5. Predictor set and modeling data
+
+```{r predictors, message=FALSE, warning=FALSE}
+y_col <- "target_next_year"
+
+x_cols <- c(
+  "asset_turnover_w",
+  "rnd_per_revenue_w",
+  "capex_margin_w",
+  "capex_per_assets_w",
+  "intangible_intensity_w",
+  "revenue_growth_w",
+  "current_asset_ratio_w",
+  "size_log"
+)
+
+train_m <- train %>% select(year, ticker, all_of(y_col), all_of(x_cols)) %>% drop_na()
+test_m  <- test  %>% select(year, ticker, all_of(y_col), all_of(x_cols)) %>% drop_na()
+
+cat("Train rows after drop_na:", nrow(train_m), "\n")
+cat("Test rows after drop_na:", nrow(test_m), "\n")
+```
+
+# 6. Correlation structure in the training period
+
+The correlation matrix provides a descriptive overview of linear associations among candidate predictors and the outcome. It is not used as a decision rule for variable inclusion.
+
+```{r corr-matrix, message=FALSE, warning=FALSE}
+cor_df <- train_m %>% select(all_of(y_col), all_of(x_cols))
+cor_mat <- cor(cor_df)
+
+corrplot(
+  cor_mat, method="color", type="upper",
+  col=corr_palette, addCoef.col=text_black,
+  tl.col=text_black, tl.cex=0.8, number.cex=0.7,
+  diag=FALSE, title="Correlation Matrix (Training period)", mar=c(0,0,1,0)
+)
+```
+
+# 7. Time-aware variable selection via rolling validation and LASSO
+
+Rolling-origin validation approximates an expanding-window evaluation where models are trained on earlier observations and assessed on subsequently observed data. The folds are created over the time-ordered training set.
+
+Within each fold, a LASSO-regularized logistic regression is estimated using internal cross-validation, and predictors with non-zero coefficients (under the conservative 1-SE penalty rule) are recorded. Predictor importance is summarized by **selection frequency across folds**.
+
+```{r rolling-splits, message=FALSE, warning=FALSE}
+train_m <- train_m %>% arrange(year)
+
+n <- nrow(train_m)
+initial_n <- floor(0.6 * n)
+assess_n  <- floor(0.1 * n)
+
+roll <- rolling_origin(
+  train_m,
+  initial = initial_n,
+  assess  = assess_n,
+  cumulative = TRUE,
+  skip = 0
+)
+
+roll
+```
+
+```{r lasso-stability, message=FALSE, warning=FALSE}
+get_xy <- function(df) {
+  x <- as.matrix(df %>% select(all_of(x_cols)))
+  y <- df[[y_col]]
+  list(x = x, y = y)
+}
+
+fold_results <- purrr::map_df(seq_along(roll$splits), function(i) {
+  split <- roll$splits[[i]]
+  analysis_df <- rsample::analysis(split)
+
+  xy <- get_xy(analysis_df)
+
+  cvfit <- cv.glmnet(
+    x = xy$x,
+    y = xy$y,
+    family = "binomial",
+    alpha = 1,
+    nfolds = 5
+  )
+
+  coef_vec <- as.matrix(coef(cvfit, s = "lambda.1se"))
+  tibble(
+    term = rownames(coef_vec),
+    coef = as.numeric(coef_vec[,1]),
+    fold = i
+  ) %>%
+    filter(term != "(Intercept)") %>%
+    mutate(selected = coef != 0)
+})
+
+stability <- fold_results %>%
+  group_by(term) %>%
+  summarise(
+    selected_in_folds = sum(selected),
+    total_folds = n_distinct(fold),
+    selection_rate = selected_in_folds / total_folds,
+    avg_coef_when_selected = mean(coef[selected], na.rm = TRUE),
+    direction = if_else(avg_coef_when_selected > 0, "positive", "negative"),
+    .groups = "drop"
+  ) %>%
+  arrange(desc(selection_rate), desc(abs(avg_coef_when_selected)))
+
+stability
+```
+
+# 8. Final predictor set and interpretable effect estimates
+
+A parsimonious predictor set is constructed by selecting variables appearing in at least 50% of rolling folds. This threshold can be adjusted in sensitivity checks.
+
+```{r choose-final-vars, message=FALSE, warning=FALSE}
+final_vars <- stability %>%
+  filter(selection_rate >= 0.5) %>%
+  pull(term)
+
+final_vars
+```
+
+The selected variables are then refitted in a standard logistic regression model to obtain interpretable effect estimates. Coefficients are reported as **odds ratios** with 95% confidence intervals.
+
+```{r final-logit-interpret, message=FALSE, warning=FALSE}
+if (length(final_vars) == 0) stop("No predictors met the selection threshold.")
+
+form <- as.formula(paste(y_col, "~", paste(final_vars, collapse = " + ")))
+final_glm <- glm(form, data = train_m, family = "binomial")
+
+summary(final_glm)
+
+or_tbl <- broom::tidy(final_glm, conf.int = TRUE, exponentiate = TRUE) %>%
+  filter(term != "(Intercept)") %>%
+  mutate(
+    estimate = round(estimate, 3),
+    conf.low = round(conf.low, 3),
+    conf.high = round(conf.high, 3),
+    p.value = signif(p.value, 3)
+  ) %>%
+  arrange(desc(estimate))
+
+or_tbl
+```
+
+# 9. Holdout evaluation (test set)
+
+Holdout evaluation assesses whether the selected predictor set generalizes to future observations. The primary performance summary under class imbalance is PR-AUC.
+
+```{r test-pr, message=FALSE, warning=FALSE}
+test_probs <- predict(final_glm, newdata = test_m, type = "response")
+
+pos_scores <- test_probs[test_m[[y_col]] == 1]
+neg_scores <- test_probs[test_m[[y_col]] == 0]
+
+pr <- PRROC::pr.curve(scores.class0 = pos_scores, scores.class1 = neg_scores, curve = TRUE)
+cat("Test PR-AUC:", round(pr$auc.integral, 3), "\n")
+
+pr_df <- as.data.frame(pr$curve)
+colnames(pr_df) <- c("Recall", "Precision", "Threshold")
+
+ggplot(pr_df, aes(x = Recall, y = Precision)) +
+  geom_area(fill = biz_dark, alpha = 0.05) +
+  geom_line(color = biz_dark, linewidth = 1.2) +
+  geom_hline(
+    yintercept = mean(train_m[[y_col]] == 1),
+    linetype = "dashed",
+    color = gray_dark
+  ) +
+  labs(
+    title = "Precision–Recall Curve on the Holdout Test Set",
+    subtitle = paste0(
+      "PR-AUC = ", round(pr$auc.integral, 3),
+      " | Dashed line denotes training base rate (",
+      percent(mean(train_m[[y_col]] == 1), accuracy = 1), ")."
+    ),
+    x = "Recall",
+    y = "Precision"
+  ) +
+  theme_consulting()
+```
+
+# 10. Reproducibility information
+
+```{r session-info}
+sessionInfo()
+```
