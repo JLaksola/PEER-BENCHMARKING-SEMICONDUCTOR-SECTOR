@@ -17,7 +17,7 @@ from sklearn.metrics import (
 import matplotlib.pyplot as plt
 from mlxtend.evaluate.time_series import GroupTimeSeriesSplit
 
-# Load data
+# Load data (add your own file path)
 df = pd.read_csv(
     "/Users/kayttaja/Desktop/PEER BENCHMARKING SEMICONDUCTOR SECTOR/data/semiconductor_companies_10k_cleaned.csv"
 )
