@@ -22,7 +22,7 @@ from mlxtend.evaluate.time_series import (
     plot_splits,
 )
 
-# Load data
+# Load data (add your own file path)
 df = pd.read_csv(
     "/Users/kayttaja/Desktop/PEER BENCHMARKING SEMICONDUCTOR SECTOR/data/semiconductor_companies_10k_cleaned.csv"
 )
